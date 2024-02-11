@@ -2,7 +2,7 @@ import numpy as np
 from itertools import product
 import matplotlib.pyplot as plt
 
-np.random.seed(101)
+np.random.seed(42)
 
 class BoltzmannMachine():
 
@@ -16,12 +16,10 @@ class BoltzmannMachine():
 
         self.get_clamped_stats() ## DUNNO if at some point this comes out of the init()
 
-        self.methods = {"exact": self.train_exact, "MH": self.train_MH}
-
-
     def get_clamped_stats(self):
         self.mu_c = np.mean(self.data, axis = 1)
         self.Sigma_c = np.einsum("ik, jk -> ij", self.data, self.data)/self.P
+        self.Sigma_c = self.Sigma_c - np.diag(self.Sigma_c)
 
 
     def boltzmann_gibbs(self, x):
@@ -54,15 +52,23 @@ class BoltzmannMachine():
         return np.einsum("i->",np.log(prob))/self.P
     
 
-    def train_exact(self):
+    def train(self, method, num_samples = 1000):
 
         change = 1
-        while np.abs(change) > self.epsilon: 
+        last_changes = []
+
+        # for _ in range(500):
+        while True: 
             all_probs = self.boltzmann_gibbs_normalized(self.all_configurations)
             assert(np.isclose(np.sum(all_probs),1))
 
-            mu = self.all_configurations @ all_probs
-            Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations) 
+            if method == "MH":
+                mu, Sigma = self.metropolis_hastings(num_samples)
+            else:
+                mu = self.all_configurations @ all_probs
+                Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations) 
+
+            Sigma = Sigma - np.diag(Sigma)
 
             dw = (self.Sigma_c - Sigma)
             dtheta = (self.mu_c - mu)
@@ -70,9 +76,21 @@ class BoltzmannMachine():
             self.w += self.eta * dw
             self.theta += self.eta * dtheta
 
-            change = np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
-            self.all_LLs["exact"].append(self.log_likelihood(self.data))
-            print(change)
+            self.all_LLs[method].append(self.log_likelihood(self.data))
+
+            if method == "exact":
+                change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
+                if change < self.epsilon:
+                    break
+                print(change)
+
+            if method == "MH":
+                if len(self.all_LLs["MH"]) < 100:
+                    continue
+                print(np.mean(self.all_LLs["MH"]))
+                print(np.abs(np.mean(self.all_LLs["MH"][100:]) - np.mean(self.all_LLs["MH"][10:])))
+                if np.abs(np.mean(self.all_LLs["MH"][100:]) - np.mean(self.all_LLs["MH"][10:])) < 1e-1:
+                    break
 
         print("Converged.")
 
@@ -85,19 +103,7 @@ class BoltzmannMachine():
 
     # calc energy difference of spin flip for BM
     def energy_diff(self, x, flip_loc):
-        return (2*x[flip_loc]*self.w[flip_loc,:]@x + 2*x[flip_loc]*self.theta[flip_loc])
-
-    # def mh(x_init, w, t, n_samples):
-    #     samples = np.zeros((int(n_samples), len(x_init)))
-    #     samples[0,:]=x_init
-    #     for i in range(int(n_samples)-1):
-    #         flip_loc = np.random.randint(len(x_init))
-    #         a = min(1, np.exp(energy_diff(flip_loc, samples[i,:], w, t)))
-    #         if np.random.uniform(0,1)<a:
-    #             samples[i+1,:] = spin_flip(x_init, flip_loc)
-    #         else:
-    #             samples[i+1, :] = samples[i, :]
-    #     return samples
+        return 2 * x[flip_loc] * (self.w[flip_loc,:]@x + self.theta[flip_loc])
 
 
     def metropolis_hastings(self, num_samples):
@@ -113,13 +119,6 @@ class BoltzmannMachine():
             # Sample random spin flip location
             flip_loc = np.random.randint(0, self.N - 1)
 
-            # Propose a new state from the proposal distribution
-
-            # Calculate the likelihood for the proposed and current states
-            # likelihood_current = self.boltzmann_gibbs_normalized(current_state)
-            # likelihood_proposed = self.boltzmann_gibbs_normalized(current_state[flip_loc] *= -1)
-
-            # Calculate acceptance ratio
             acceptance_ratio[i] = min(1, np.exp(-self.energy_diff(current_state, flip_loc)))
 
             # Accept or reject the proposed state
@@ -138,51 +137,12 @@ class BoltzmannMachine():
         Sigma = np.einsum("ik, jk -> ij", samples, samples)/num_samples
 
         return mu, Sigma #, current_state
-
-
-    def train_MH(self, num_samples = 1000):
-
-        change = 1
-        last_changes = []
-        # mu = np.random.randn(self.N)
-
-        # while np.abs(change) > self.epsilon:
-        for _ in range(100):
-            all_probs = self.boltzmann_gibbs_normalized(self.all_configurations)
-
-            # assert(np.isclose(np.sum(all_probs),1))
-            print(np.sum(all_probs))
-
-            mu, Sigma = self.metropolis_hastings(num_samples)
-
-            dw = (self.Sigma_c - Sigma)
-            dtheta = (self.mu_c - mu)
-
-            self.w += self.eta * dw 
-            self.theta += self.eta * dtheta 
-
-            change_current = np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
-
-            last_changes.append(change_current)
-            if len(last_changes) > 100:
-                last_changes.pop(0)
-
-            print(change_current)
-            
-            change = np.mean(last_changes)
-
-            self.all_LLs["MH"].append(self.log_likelihood(self.data))
-            print(change)
-
-        print("Converged")
-
-
+    
 
     def plot_LL(self, method = "exact"):
 
         if len(self.all_LLs[method]) == 0:
-            train = self.methods[method]
-            train()
+            self.train(method)
         #TODO: THIS OF COURSE NEEDS TO BE DONE PROPERLY HAHA
 
         plt.figure()
@@ -193,13 +153,13 @@ class BoltzmannMachine():
 def main():
     # set params
     n = 10 # number of spins
-    p = 30 # number of patterns
-    eta = .3 # learning rate
+    p = 50 # number of patterns
+    eta = .005 # learning rate
     epsilon = 1e-13 # convergence criterion
 
     # generate random data set with 10-20 spins
     x_small = np.random.choice([-1, 1], size=(n,p))
-    w_init = np.random.randn(n,n)
+    w_init = np.ones((n,n))
     w = w_init = w_init - np.diag(w_init)
     theta = theta_init = np.random.randn(n)
 
@@ -209,4 +169,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
