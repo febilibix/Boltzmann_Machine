@@ -117,7 +117,7 @@ class BoltzmannMachine():
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
                     break
-                print(change)
+                print(f'max param change:{change}')
 
             if method == "MH":
                 print(np.mean(self.all_LLs["MH"]))
@@ -175,14 +175,17 @@ class BoltzmannMachine():
         return mu, Sigma #, current_state
     
 
-    def plot_LL(self, out, method = "exact"):
+    def plot_LL(self, out, method = "exact", train_weights=True):
 
         if len(self.all_LLs[method]) == 0:
-            self.train(method)
+            self.train(method, train_weights)
         #TODO: THIS OF COURSE NEEDS TO BE DONE PROPERLY HAHA
 
         plt.figure()
         plt.plot(range(len(self.all_LLs[method])), self.all_LLs[method])
+        plt.xlabel('Runs')
+        plt.ylabel('Log Likelihood')
+        plt.grid()
         plt.savefig(f"plots/LL_{out}_{method}.png")
 
     
