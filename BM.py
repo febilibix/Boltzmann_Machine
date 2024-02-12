@@ -18,7 +18,7 @@ class BoltzmannMachine():
         all_configurations = list(product([-1, 1], repeat=w.shape[0]))
         self.all_configurations = np.array(all_configurations).T
         self.N, self.P = self.data.shape[0], self.data.shape[1]
-        self.all_LLs = dict(exact = list(), MH = list()) 
+        self.all_LLs = dict(exact = list(), MH = list(), MF = list()) 
         self.num_iter = num_iter
 
         self.get_clamped_stats() ## DUNNO if at some point this comes out of the init()
@@ -77,7 +77,8 @@ class BoltzmannMachine():
                 self.all_configurations = np.array(all_configurations).T
                 mu = self.all_configurations @ all_probs
                 Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations) 
-
+            if method == "MF":
+                mu, Sigma = self.mf()
             Sigma = Sigma - np.diag(Sigma)
             assert np.all(np.isclose(Sigma, Sigma.T))
 
@@ -105,6 +106,12 @@ class BoltzmannMachine():
                 # print(np.mean(self.all_LLs["MH"]))
                 print(np.abs(np.mean(self.all_LLs["MH"][100:]) - np.mean(self.all_LLs["MH"][10:])))
                 if np.abs(np.mean(self.all_LLs["MH"][100:]) - np.mean(self.all_LLs["MH"][10:])) < 1e-1:
+                    break
+
+            if method == "MF":
+                print(np.mean(self.all_LLs["MF"]))
+                change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
+                if change < self.epsilon:
                     break
 
         print("Converged.")
@@ -153,7 +160,31 @@ class BoltzmannMachine():
 
         return mu, Sigma #, current_state
     
+    def mf(self, meth="seq"):
+        couplings = self.w
+        field = self.theta
+        mf_convergence_threshold = self.epsilon
+        n_spins = self.N
+        spin_means = np.random.uniform(-1, 1, n_spins)
+        indexes = np.array(range(spin_means.size))
+        max_diff_spin = 1e10
+        while max_diff_spin > mf_convergence_threshold:
+            old_spin_means = np.copy(spin_means)
+            if meth == "par":
+                spin_means = np.tanh(np.einsum('ji,i->j', couplings, spin_means)+field)
+            if meth == "seq":
+                for i in indexes:
+                    null_inxs = np.concatenate([indexes[:i], indexes[i+1:] ])
+                    interaction = np.dot(spin_means[null_inxs], couplings[i, null_inxs])
+                    spin_means[i] = np.tanh(interaction + field[i])
+            max_diff_spin = np.max(np.abs(old_spin_means - spin_means))
+        mu = spin_means
+        fraction = np.diag(1/ (1 - np.einsum('i, i-> i', mu, mu)))
+        A_inverse = fraction - couplings
+        sigma = np.linalg.inv(A_inverse) + np.einsum('i,j->ij', spin_means, spin_means)
+        return mu, sigma
 
+    
     def plot_LL(self, out, method = "exact"):
 
         if len(self.all_LLs[method]) == 0:
