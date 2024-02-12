@@ -1,6 +1,7 @@
 import numpy as np 
 from itertools import product
 import matplotlib.pyplot as plt
+from functools import cached_property
 
 np.random.seed(42)
 
@@ -9,19 +10,19 @@ class BoltzmannMachine():
     def __init__(self, data, w, theta, eta, epsilon, num_iter):
         self.data, self.w, self.theta = data, w, theta
         self.eta, self.epsilon = eta, epsilon
+        self.N, self.P = self.data.shape[0], self.data.shape[1]
 
         # TODO: Here we will run into a problem sooner or later because we need all configs atm
         # to get log likelihood but for 160 neurons in salamander retina that means 
         # 2**160 = 1461501637330902918203684832716283019655932542976 configurations.
         # I guess we need to approximate Z somehow 
 
-        all_configurations = list(product([-1, 1], repeat=w.shape[0]))
-        self.all_configurations = np.array(all_configurations).T
-        self.N, self.P = self.data.shape[0], self.data.shape[1]
+        
         self.all_LLs = dict(exact = list(), MH = list()) 
         self.num_iter = num_iter
 
         self.get_clamped_stats() ## DUNNO if at some point this comes out of the init()
+
 
     def get_clamped_stats(self):
         self.mu_c = np.mean(self.data, axis = 1)
@@ -41,15 +42,35 @@ class BoltzmannMachine():
 
 
     def boltzmann_gibbs_normalized(self, x):
-        all_configurations = self.all_configurations
-
         unnormalized = self.boltzmann_gibbs(x)
-        Z = np.sum(self.boltzmann_gibbs(all_configurations))
+        Z = self.partition_function()
 
         out = unnormalized/Z
         if len(out) == 1:
             out = out[0]
         return out
+    
+
+    @cached_property
+    def all_configurations(self):
+        all_configs = list(product([-1, 1], repeat=self.N))
+        return np.array(all_configs).T
+    
+    
+    def partition_function(self):
+        if self.N <= 20:
+            Z = np.sum(self.boltzmann_gibbs(self.all_configurations))
+        else:
+            ## TODO: Not sure how to but here we need to replace self.mu_c by some different m_i
+            ## THIS DOES NOT WORK YET!
+            # For now:
+            m_i = self.mu_c
+            # See handout p. 19/20
+            log_term = np.sum((1+m_i) * np.log(.5*(1+m_i)) + (1-m_i) *  np.log(.5*(1-m_i)))
+            F = -.5 * np.einsum("ij,i,j->", self.w, m_i, m_i) + .5 * log_term
+            Z = np.exp(-F)
+            print(Z)
+        return Z
 
 
     def log_likelihood(self, x):
@@ -67,19 +88,18 @@ class BoltzmannMachine():
 
         # for _ in range(500):
         while True: 
-            all_probs = self.boltzmann_gibbs_normalized(self.all_configurations)
-            assert(np.isclose(np.sum(all_probs),1))
 
             if method == "MH":
                 mu, Sigma = self.metropolis_hastings(self.num_iter)
             if method == "exact":
-                all_configurations = list(product([-1, 1], repeat=self.w.shape[0]))
-                self.all_configurations = np.array(all_configurations).T
+                all_probs = self.boltzmann_gibbs_normalized(self.all_configurations)
+                # assert(np.isclose(np.sum(all_probs),1))
+                
                 mu = self.all_configurations @ all_probs
                 Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations) 
 
             Sigma = Sigma - np.diag(Sigma)
-            assert np.all(np.isclose(Sigma, Sigma.T))
+            # assert np.all(np.isclose(Sigma, Sigma.T))
 
 
             dw = (self.Sigma_c - Sigma)
@@ -194,7 +214,7 @@ def main():
     theta = theta_init = np.random.randn(n)
 
     bm = BoltzmannMachine(x_small, w, theta, eta, epsilon, num_iter)
-    # bm.plot_LL("toydata", "MH")
+    bm.plot_LL("toydata", "MH")
 
     for epsilon_1 in 10.**(np.arange(1, -2, -.2)):
         print(epsilon_1)

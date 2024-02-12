@@ -16,7 +16,7 @@ def main():
     theta = theta_init = np.random.randn(n)
 
     # TODO: As is, running this kills my terminal straight away. Even initializing requires 
-    # computation of all possible configurations which is intractable. Needs to be changed
+    # computation of all possible configurations which is intractable. Needs to be changed!
     bm = BoltzmannMachine(data, w, theta, eta, epsilon, num_iter)
     # bm.plot_LL("salamander", "MH")
     
