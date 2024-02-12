@@ -219,8 +219,9 @@ def main():
     for epsilon_1 in 10.**(np.arange(1, -2, -.2)):
         print(epsilon_1)
         bm.solve_fixed_points(epsilon_1)
+        print("test")
 
-
+#### BRANDON
 
 if __name__ == "__main__":
     main()
