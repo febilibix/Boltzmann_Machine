@@ -82,7 +82,7 @@ class BoltzmannMachine():
         return np.einsum("i->",np.log(prob))/self.P
     
 
-    def train(self, method):
+    def train(self, method, train_weights=True):
 
         change = 1
 
@@ -101,13 +101,14 @@ class BoltzmannMachine():
             Sigma = Sigma - np.diag(Sigma)
             # assert np.all(np.isclose(Sigma, Sigma.T))
 
-
             dw = (self.Sigma_c - Sigma)
             dtheta = (self.mu_c - mu)
 
-            self.w += self.eta * dw
+            if train_weights:
+                self.w += self.eta * dw
+            else:
+                self.w = np.zeros_like(self.w)
             self.theta += self.eta * dtheta
-
             # assert np.all(np.isclose(self.w, self.w.T))
 
             self.all_LLs[method].append(self.log_likelihood(self.data))
@@ -123,8 +124,8 @@ class BoltzmannMachine():
                 if len(self.all_LLs["MH"]) < 100:
                     continue
                 # print(np.mean(self.all_LLs["MH"]))
-                print(np.abs(np.mean(self.all_LLs["MH"][100:]) - np.mean(self.all_LLs["MH"][10:])))
-                if np.abs(np.mean(self.all_LLs["MH"][100:]) - np.mean(self.all_LLs["MH"][10:])) < 1e-1:
+                print(np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:])))
+                if np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:])) < 1e-1:
                     break
 
         print("Converged.")
@@ -220,8 +221,6 @@ def main():
         print(epsilon_1)
         bm.solve_fixed_points(epsilon_1)
         print("test")
-
-#### BRANDON
 
 if __name__ == "__main__":
     main()
