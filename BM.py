@@ -23,6 +23,8 @@ class BoltzmannMachine():
 
         self.get_clamped_stats() ## DUNNO if at some point this comes out of the init()
 
+        # self.mu = np.zeros(self.N)
+
 
     def get_clamped_stats(self):
         self.mu_c = np.mean(self.data, axis = 1)
@@ -74,8 +76,6 @@ class BoltzmannMachine():
 
 
     def log_likelihood(self, x):
-        # TODO: This needs to be changed (maybe just use unnormalized !?) s.t. we don't need all
-        # configurations each time. It would be intractable I'm pretty sure
         prob = self.boltzmann_gibbs_normalized(x)
         if np.isscalar(prob):
             prob = np.array([prob])
@@ -90,20 +90,20 @@ class BoltzmannMachine():
         while True: 
 
             if method == "MH":
-                mu, Sigma = self.metropolis_hastings(self.num_iter)
+                self.mu, Sigma = self.metropolis_hastings(self.num_iter)
             if method == "exact":
                 all_probs = self.boltzmann_gibbs_normalized(self.all_configurations)
                 # assert(np.isclose(np.sum(all_probs),1))
                 
-                mu = self.all_configurations @ all_probs
+                self.mu = self.all_configurations @ all_probs
                 Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations) 
             if method == "MF":
-                mu, Sigma = self.mf()
+                self.mu, Sigma = self.mf()
             Sigma = Sigma - np.diag(Sigma)
             # assert np.all(np.isclose(Sigma, Sigma.T))
 
             dw = (self.Sigma_c - Sigma)
-            dtheta = (self.mu_c - mu)
+            dtheta = (self.mu_c - self.mu)
 
             if train_weights:
                 self.w += self.eta * dw
@@ -133,6 +133,12 @@ class BoltzmannMachine():
                 print(np.mean(self.all_LLs["MF"]))
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
+                    break
+                if len(self.all_LLs["MH"]) < 100:
+                    continue
+                # print(np.mean(self.all_LLs["MH"]))
+                print(np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:])))
+                if np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:])) < 1e-1:
                     break
 
         print("Converged.")
@@ -176,10 +182,10 @@ class BoltzmannMachine():
         acceptance_ratio[-1] = 1
 
         samples = np.array(samples).T
-        mu = np.mean(samples, axis = 1)
+        self.mu = np.mean(samples, axis = 1)
         Sigma = np.einsum("ik, jk -> ij", samples, samples)/num_samples
 
-        return mu, Sigma #, current_state
+        return self.mu, Sigma #, current_state
     
     def mf(self, meth="seq"):
         couplings = self.w
@@ -199,11 +205,11 @@ class BoltzmannMachine():
                     interaction = np.dot(spin_means[null_inxs], couplings[i, null_inxs])
                     spin_means[i] = np.tanh(interaction + field[i])
             max_diff_spin = np.max(np.abs(old_spin_means - spin_means))
-        mu = spin_means
-        fraction = np.diag(1/ (1 - np.einsum('i, i-> i', mu, mu)))
+        self.mu = spin_means
+        fraction = np.diag(1/ (1 - np.einsum('i, i-> i', self.mu, self.mu)))
         A_inverse = fraction - couplings
         sigma = np.linalg.inv(A_inverse) + np.einsum('i,j->ij', spin_means, spin_means)
-        return mu, sigma
+        return self.mu, sigma
 
     def plot_LL(self, out, method = "exact", train_weights=True):
 
@@ -221,6 +227,7 @@ class BoltzmannMachine():
     
     def solve_fixed_points(self, epsilon_1):
         
+        self.mu = self.mu_c.copy()
         C = self.Sigma_c - np.outer(self.mu_c, self.mu_c)
 
         C_inv = np.linalg.inv(C)
@@ -235,7 +242,7 @@ class BoltzmannMachine():
 
 def main():
     # set params
-    n = 10 # number of spins
+    n = 50 # number of spins
     p = 50 # number of patterns
     eta = .005 # learning rate
     epsilon = 1e-13 # convergence criterion
