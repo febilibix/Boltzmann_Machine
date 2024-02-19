@@ -134,11 +134,11 @@ class BoltzmannMachine():
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
                     break
-                if len(self.all_LLs["MH"]) < 100:
+                if len(self.all_LLs["MF"]) < 100:
                     continue
-                # print(np.mean(self.all_LLs["MH"]))
-                print(np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:])))
-                if np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:])) < 1e-1:
+                # print(np.mean(self.all_LLs["MF"]))
+                print(np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])))
+                if np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])) < 1e-1:
                     break
 
         print("Converged.")
