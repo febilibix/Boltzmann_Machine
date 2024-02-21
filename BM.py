@@ -7,10 +7,12 @@ np.random.seed(42)
 
 class BoltzmannMachine():
 
-    def __init__(self, data, w, theta, eta, epsilon, num_iter):
+    def __init__(self, data, w, theta, eta, epsilon, num_iter, approx_partition=False):
         self.data, self.w, self.theta = data, w, theta
         self.eta, self.epsilon = eta, epsilon
+
         self.N, self.P = self.data.shape[0], self.data.shape[1]
+        self.approx_partition = approx_partition
 
         # TODO: Here we will run into a problem sooner or later because we need all configs atm
         # to get log likelihood but for 160 neurons in salamander retina that means 
@@ -60,7 +62,7 @@ class BoltzmannMachine():
     
     
     def partition_function(self):
-        if self.N <= 20:
+        if self.N <= 20 and self.approx_partition == False:
             Z = np.sum(self.boltzmann_gibbs(self.all_configurations))
         else:
             ## TODO: Not sure how to but here we need to replace self.mu_c by some different m_i
