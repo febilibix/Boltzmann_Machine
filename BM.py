@@ -71,9 +71,8 @@ class BoltzmannMachine():
             m_i = self.mu_c
             # See handout p. 19/20
             log_term = np.sum((1+m_i) * np.log(.5*(1+m_i)) + (1-m_i) *  np.log(.5*(1-m_i)))
-            F = -.5 * np.einsum("ij,i,j->", self.w, m_i, m_i) + .5 * log_term
+            F = -.5 * np.einsum("ij,i,j->", self.w, m_i, m_i) - self.theta.dot(m_i) + .5 * log_term
             Z = np.exp(-F)
-            print(Z)
         return Z
 
 
@@ -120,7 +119,7 @@ class BoltzmannMachine():
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
                     break
-                print(f'max param change:{change}')
+                # print(f'max param change:{change}')
 
             if method == "MH":
                 print(np.mean(self.all_LLs["MH"]))
