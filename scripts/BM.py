@@ -79,7 +79,6 @@ class BoltzmannMachine():
         return np.einsum("i->",np.log(prob))/self.P
     
 
-    @jit(forceobj=True)
     def train(self, method, train_weights=True):
 
         change = 1
@@ -88,6 +87,7 @@ class BoltzmannMachine():
         while True: 
             iters += 1
 
+            # Get mu and sigma unclamped
             if method == "MH":
                 self.mu, Sigma = self.metropolis_hastings(self.num_iter)
             if method == "exact":
@@ -101,25 +101,24 @@ class BoltzmannMachine():
             Sigma = Sigma - np.diag(Sigma)
             # assert np.all(np.isclose(Sigma, Sigma.T))
 
+            # Update Weighsts
             dw = (self.Sigma_c - Sigma)
             dtheta = (self.mu_c - self.mu)
-
             if train_weights:
                 self.w += self.eta * dw
             else:
                 self.w = np.zeros_like(self.w)
             self.theta += self.eta * dtheta
-            # assert np.all(np.isclose(self.w, self.w.T))
-
+            #assert np.all(np.isclose(self.w, self.w.T))
             self.all_LLs[method].append(self.log_likelihood(self.data))
 
+            # Check convergence
             if method == "exact":
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
                     break
                 # print(f'max param change:{change}')
-
-            if method == "MH":
+            elif method == "MH":
                 print(f"Mean LL: {np.mean(self.all_LLs['MH'])}")
                 if len(self.all_LLs["MH"]) < 100:
                     continue
@@ -127,19 +126,20 @@ class BoltzmannMachine():
                 print(f"LL_diff: {LL_diff}")
                 if LL_diff < 1e-1:
                     break
-
-            if method == "MF":
+            elif method == "MF":
                 print(np.mean(self.all_LLs["MF"]))
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
                     break
                 if len(self.all_LLs["MF"]) < 100:
                     continue
-                # print(np.mean(self.all_LLs["MF"]))
                 print(np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])))
                 if np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])) < 1e-1:
                     break
+            
 
+        print(method)
+        print(f"iterations: {iters}")
         print("Converged.")
 
 
