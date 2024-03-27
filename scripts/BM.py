@@ -154,6 +154,7 @@ class BoltzmannMachine():
                     break
             
 
+        print()
         print(method)
         print(f"iterations: {iters}")
         print("Converged.")
