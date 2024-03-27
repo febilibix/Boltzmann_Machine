@@ -35,7 +35,6 @@ class BoltzmannMachine():
         if len(x.shape) == 1:
             x = x.reshape(x.shape[0], 1)
 
-        # TODO: Fix Overflow
         unnormalized = np.exp(.5*np.einsum('ij,ik,jk->k', w, x, x) + np.einsum('i,ik->k', theta, x))
 
         return unnormalized
@@ -65,6 +64,11 @@ class BoltzmannMachine():
             ## THIS DOES NOT WORK YET!
 
             m_i = self.mu_c
+            # Prevent Nan from Log
+            print(f"min m_i : {np.min(m_i)}")
+            m_i[np.where(m_i <= -1)] = -1 + 1e-1
+            m_i[np.where(m_i >= 1)] = 1 - 1e-1
+
             # See handout p. 19/20
             log_term = np.sum((1+m_i) * np.log(.5*(1+m_i)) + (1-m_i) *  np.log(.5*(1-m_i)))
             F = -.5 * np.einsum("ij,i,j->", self.w, m_i, m_i) - self.theta.dot(m_i) + .5 * log_term
@@ -73,13 +77,22 @@ class BoltzmannMachine():
 
 
     def log_likelihood(self, x):
+
         prob = self.boltzmann_gibbs_normalized(x)
+
         if np.isscalar(prob):
             prob = np.array([prob])
         return np.einsum("i->",np.log(prob))/self.P
     
+    def log_likelihood_2(self):
+        # Get log energy
+        # Get Z 
+        # Sum over all likelihoods
+        pass
+
 
     def train(self, method, train_weights=True):
+        self.method = method
 
         change = 1
         iters = -1 
@@ -115,16 +128,19 @@ class BoltzmannMachine():
             # Check convergence
             if method == "exact":
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
+                print(f"\rparam change: {change}", end="")
                 if change < self.epsilon:
                     break
-                # print(f'max param change:{change}')
             elif method == "MH":
                 print(f"Mean LL: {np.mean(self.all_LLs['MH'])}")
-                if len(self.all_LLs["MH"]) < 100:
+                if len(self.all_LLs["MH"]) < 300:
                     continue
                 LL_diff = np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:]))
                 print(f"LL_diff: {LL_diff}")
-                if LL_diff < 1e-1:
+                print(f"mu_W : {np.mean(self.w)}, var_W : {np.var(self.w)}")
+                print(f"mu_theta : {np.mean(self.theta)}, var_theta : {np.var(self.theta)}")
+                print(f"dw : {np.mean(dw)}")
+                if LL_diff < 1e-3:
                     break
             elif method == "MF":
                 print(np.mean(self.all_LLs["MF"]))
@@ -134,7 +150,7 @@ class BoltzmannMachine():
                 if len(self.all_LLs["MF"]) < 100:
                     continue
                 print(np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])))
-                if np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])) < 1e-1:
+                if np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])) < 1e-5:
                     break
             
 
@@ -210,18 +226,18 @@ class BoltzmannMachine():
         sigma = np.linalg.inv(A_inverse) + np.einsum('i,j->ij', spin_means, spin_means)
         return self.mu, sigma
 
-    def plot_LL(self, out, method = "exact", train_weights=True):
+    def plot_LL(self, file_path, method = "exact", train_weights=True):
 
+        #TODO: THIS OF COURSE NEEDS TO BE DONE PROPERLY HAHA
         if len(self.all_LLs[method]) == 0:
             self.train(method, train_weights)
-        #TODO: THIS OF COURSE NEEDS TO BE DONE PROPERLY HAHA
 
         plt.figure()
         plt.plot(range(len(self.all_LLs[method])), self.all_LLs[method])
         plt.xlabel('Runs')
         plt.ylabel('Log Likelihood')
         plt.grid()
-        plt.savefig(f"plots/LL_{out}_{method}.png")
+        plt.savefig(file_path)
 
     
     def solve_fixed_points(self, epsilon_1):
