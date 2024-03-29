@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     plt.figure()
     make_plot(exact_bm, "Exact")
-    make_plot(MH_bm_1000, "MH iter = 5")
+    make_plot(MH_bm_1000, "MH iter = 1000")
     make_plot(MF_bm, "MF")
 
 
