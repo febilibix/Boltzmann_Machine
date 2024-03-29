@@ -246,12 +246,12 @@ class BoltzmannMachine():
         self.mu = self.mu_c.copy()
         C = self.Sigma_c - np.outer(self.mu_c, self.mu_c)
 
+        C = C + epsilon_1*np.eye(self.N)
         C_inv = np.linalg.inv(C)
-        C_inv = C_inv + epsilon_1*np.eye(self.N)
 
         self.w = np.eye(self.N)/(1 - self.mu_c) - C_inv
         self.w = np.divide(np.eye(self.N),(1 - self.mu_c)[:, np.newaxis]) - C_inv
         self.theta = np.arctanh(self.mu_c) - self.w @ self.mu_c
 
-        print("Log Likelihood after: ", self.log_likelihood(self.data))
+        return self.log_likelihood(self.data)
 
