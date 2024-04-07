@@ -1,4 +1,4 @@
-import numpy as np 
+import numpy as np
 from itertools import product
 import matplotlib.pyplot as plt
 from functools import cached_property
@@ -14,11 +14,12 @@ class BoltzmannMachine():
 
         self.N, self.P = self.data.shape[0], self.data.shape[1]
         self.approx_partition = approx_partition
-        
-        self.all_LLs = dict(exact = list(), MH = list(), MF = list()) 
-        self.num_iter = num_iter
 
-        self.get_clamped_stats() 
+        self.all_LLs = dict(exact = list(), MH = list(), MF = list())
+        self.num_iter = num_iter
+        self.max_iter = 1e5
+
+        self.get_clamped_stats()
 
         # self.mu = np.zeros(self.N)
 
@@ -48,14 +49,14 @@ class BoltzmannMachine():
         if len(out) == 1:
             out = out[0]
         return out
-    
+
 
     @cached_property
     def all_configurations(self):
         all_configs = list(product([-1, 1], repeat=self.N))
         return np.array(all_configs).T
-    
-    
+
+
     def partition_function(self):
         if self.N <= 20 and self.approx_partition == False:
             Z = np.sum(self.boltzmann_gibbs(self.all_configurations))
@@ -65,7 +66,7 @@ class BoltzmannMachine():
 
             m_i = self.mu_c
             # Prevent Nan from Log
-            print(f"min m_i : {np.min(m_i)}")
+            print(f"min m_i : {np.min(m_i)}", end="\r")
             m_i[np.where(m_i <= -1)] = -1 + 1e-1
             m_i[np.where(m_i >= 1)] = 1 - 1e-1
 
@@ -83,21 +84,21 @@ class BoltzmannMachine():
         if np.isscalar(prob):
             prob = np.array([prob])
         return np.einsum("i->",np.log(prob))/self.P
-    
+
     def log_likelihood_2(self):
         # Get log energy
-        # Get Z 
+        # Get Z
         # Sum over all likelihoods
         pass
 
 
-    def train(self, method, train_weights=True):
+    def train(self, method, train_weights=True, max_iter_MF=None):
         self.method = method
 
         change = 1
-        iters = -1 
+        iters = -1
 
-        while True: 
+        while True:
             iters += 1
 
             # Get mu and sigma unclamped
@@ -106,11 +107,14 @@ class BoltzmannMachine():
             if method == "exact":
                 all_probs = self.boltzmann_gibbs_normalized(self.all_configurations)
                 # assert(np.isclose(np.sum(all_probs),1))
-                
+
                 self.mu = self.all_configurations @ all_probs
-                Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations) 
+                Sigma = np.einsum('ik,k,jk->ij',self.all_configurations, all_probs, self.all_configurations)
             if method == "MF":
-                self.mu, Sigma = self.mf()
+                if max_iter_MF is not None:
+                    self.mu, Sigma = self.mf(max_iter=max_iter_MF)
+                else:
+                    self.mu, Sigma = self.mf()
             Sigma = Sigma - np.diag(Sigma)
             # assert np.all(np.isclose(Sigma, Sigma.T))
 
@@ -124,6 +128,13 @@ class BoltzmannMachine():
             self.theta += self.eta * dtheta
             #assert np.all(np.isclose(self.w, self.w.T))
             self.all_LLs[method].append(self.log_likelihood(self.data))
+            if np.isnan(self.all_LLs[method][-1]):
+              print("Break because of NaN LL")
+              break
+
+            if self.all_LLs[method][-1] > 0:
+                print("Break because of positive LL")
+                break
 
             # Check convergence
             if method == "exact":
@@ -136,23 +147,30 @@ class BoltzmannMachine():
                 if len(self.all_LLs["MH"]) < 300:
                     continue
                 LL_diff = np.abs(np.mean(self.all_LLs["MH"][-300:]) - np.mean(self.all_LLs["MH"][-50:]))
-                print(f"LL_diff: {LL_diff}")
-                print(f"mu_W : {np.mean(self.w)}, var_W : {np.var(self.w)}")
-                print(f"mu_theta : {np.mean(self.theta)}, var_theta : {np.var(self.theta)}")
-                print(f"dw : {np.mean(dw)}")
+                print(f"LL_diff: {LL_diff}", end="")
+                print(f"mu_W : {np.mean(self.w)}, var_W : {np.var(self.w)}", end="")
+                print(f"mu_theta : {np.mean(self.theta)}, var_theta : {np.var(self.theta)}", end="")
+                print(f"dw : {np.mean(dw)}", end="")
                 if LL_diff < 1e-3:
                     break
+                if len(self.all_LLs["MH"]) > self.max_iter:
+                    break
             elif method == "MF":
-                print(np.mean(self.all_LLs["MF"]))
+                print(np.mean(self.all_LLs["MF"]), end=", ")
                 change = self.eta * np.max((np.max(np.abs(dw)), np.max(np.abs(dtheta))))
                 if change < self.epsilon:
                     break
                 if len(self.all_LLs["MF"]) < 100:
                     continue
-                print(np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])))
+                print(np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])), end="")
                 if np.abs(np.mean(self.all_LLs["MF"][-300:]) - np.mean(self.all_LLs["MF"][-50:])) < 1e-5:
                     break
-            
+                if len(self.all_LLs["MF"]) > self.max_iter:
+                    break
+
+            print(f"iteration: {len(self.all_LLs[method])}", end="\r")
+
+
 
         print()
         print(method)
@@ -164,7 +182,7 @@ class BoltzmannMachine():
         x = state.copy()
         x[flip_loc] *= -1
         return x
-    
+
 
     # calc energy difference of spin flip for BM
     def energy_diff(self, x, flip_loc):
@@ -172,7 +190,8 @@ class BoltzmannMachine():
 
 
     def metropolis_hastings(self, num_samples):
-        initial_state = np.random.randn(self.N)
+        # initial_state = np.random.randn(self.N)
+        initial_state =np.random.choice([-1, 1], self.N)
         samples = [initial_state]
 
         acceptance_ratio=np.empty(num_samples)
@@ -202,8 +221,8 @@ class BoltzmannMachine():
         Sigma = np.einsum("ik, jk -> ij", samples, samples)/num_samples
 
         return self.mu, Sigma #, current_state
-    
-    def mf(self, meth="seq"):
+
+    def mf(self, meth="seq", max_iter = 1e6):
         couplings = self.w
         field = self.theta
         mf_convergence_threshold = self.epsilon
@@ -211,7 +230,9 @@ class BoltzmannMachine():
         spin_means = np.random.uniform(-1, 1, n_spins)
         indexes = np.array(range(spin_means.size))
         max_diff_spin = 1e10
-        while max_diff_spin > mf_convergence_threshold:
+        max_iter = max_iter
+        n = 0
+        while max_diff_spin > mf_convergence_threshold or n > max_iter:
             old_spin_means = np.copy(spin_means)
             if meth == "par":
                 spin_means = np.tanh(np.einsum('ji,i->j', couplings, spin_means)+field)
@@ -221,6 +242,7 @@ class BoltzmannMachine():
                     interaction = np.dot(spin_means[null_inxs], couplings[i, null_inxs])
                     spin_means[i] = np.tanh(interaction + field[i])
             max_diff_spin = np.max(np.abs(old_spin_means - spin_means))
+            n += 1
         self.mu = spin_means
         fraction = np.diag(1/ (1 - np.einsum('i, i-> i', self.mu, self.mu)))
         A_inverse = fraction - couplings
@@ -238,20 +260,21 @@ class BoltzmannMachine():
         plt.xlabel('Runs')
         plt.ylabel('Log Likelihood')
         plt.grid()
+        plt.show()
         plt.savefig(file_path)
 
-    
+
     def solve_fixed_points(self, epsilon_1):
-        
+
         self.mu = self.mu_c.copy()
         C = self.Sigma_c - np.outer(self.mu_c, self.mu_c)
 
-        C = C + epsilon_1*np.eye(self.N)
         C_inv = np.linalg.inv(C)
+        C_inv = C_inv + epsilon_1*np.eye(self.N)
 
         self.w = np.eye(self.N)/(1 - self.mu_c) - C_inv
         self.w = np.divide(np.eye(self.N),(1 - self.mu_c)[:, np.newaxis]) - C_inv
         self.theta = np.arctanh(self.mu_c) - self.w @ self.mu_c
 
-        return self.log_likelihood(self.data)
+        print("Log Likelihood after: ", self.log_likelihood(self.data))
 
