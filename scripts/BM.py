@@ -232,7 +232,7 @@ class BoltzmannMachine():
         max_diff_spin = 1e10
         max_iter = max_iter
         n = 0
-        while max_diff_spin > mf_convergence_threshold or n > max_iter:
+        while max_diff_spin > mf_convergence_threshold and n < max_iter:
             old_spin_means = np.copy(spin_means)
             if meth == "par":
                 spin_means = np.tanh(np.einsum('ji,i->j', couplings, spin_means)+field)
